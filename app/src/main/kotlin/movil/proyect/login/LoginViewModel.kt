@@ -62,7 +62,7 @@ class LoginViewModel : ViewModel() {
                 )
 
                 val respuesta = conexion.leerRespuestaCompleta()
-
+                println("RESPUESTA CRUDA -> [$respuesta]")
                 withContext(Dispatchers.Main) {
                     when {
                         respuesta.startsWith("LOGIN_OK") -> {
@@ -93,14 +93,7 @@ class LoginViewModel : ViewModel() {
     }
 
     private fun crearUsuarioDesdeRespuesta(resp: String): Usuario {
-        val datos = resp.split(MainActivity.SEP)
-
-        val fechaAlta: LocalDate? = try {
-            if (datos[6].isBlank() || datos[6] == "null") null
-            else LocalDate.parse(datos[6])
-        } catch (e: Exception) {
-            null
-        }
+        val datos = resp.trim().split(MainActivity.SEP)
 
         return Usuario(
             id = datos[1].toInt(),
@@ -108,8 +101,10 @@ class LoginViewModel : ViewModel() {
             mail = datos[3],
             rol = datos[4],
             idDepartamento = datos[5].toIntOrNull() ?: 0,
-            fechaAlta = fechaAlta,
-            direccion = if (datos.size > 8) datos[8] else ""
+            nombreDepartamento = datos[6],
+            fechaAlta = datos[7].takeIf { it.isNotBlank() && it != "null" }
+                ?.let { LocalDate.parse(it) },
+            direccion = datos.getOrNull(8) ?: ""
         )
     }
 

@@ -1,4 +1,5 @@
 package movil.proyect
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -15,6 +16,7 @@ import movil.proyect.login.LoginViewModel
 import movil.proyect.network.ConexionCliente
 import movil.proyect.ui.theme.*
 import androidx.lifecycle.viewmodel.compose.viewModel
+import movil.proyect.dashboard.DashboardActivity
 
 
 class MainActivity : ComponentActivity() {
@@ -53,9 +55,11 @@ class MainActivity : ComponentActivity() {
 
                 LoginScreen(
                     viewModel = viewModel,
-                    onLoginOK = { usuario ->
-                        usuarioActual = usuario
-                        println("LOGIN OK → ${usuario.nombre}")
+                    onLoginOK = {
+                        startActivity(
+                            Intent(this@MainActivity, DashboardActivity::class.java)
+                        )
+                        finish()
                     }
                 )
             }
