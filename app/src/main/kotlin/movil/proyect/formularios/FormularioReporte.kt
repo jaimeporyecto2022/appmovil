@@ -8,29 +8,30 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import movil.proyect.MainActivity
-import movil.proyect.Modelos.Reporte
 import movil.proyect.Modelos.Tarea
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FormularioReporte(
     tarea: Tarea,
-    reporte: Reporte? = null,
     onClose: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    val esUpdate = reporte != null
 
-    var info by remember { mutableStateOf(reporte?.informacion ?: "") }
-    var estado by remember { mutableStateOf(reporte?.estado ?: "") }
+    var info by remember { mutableStateOf("") }
+    var estado by remember { mutableStateOf("pendiente") }
     var error by remember { mutableStateOf<String?>(null) }
     var guardando by remember { mutableStateOf(false) }
 
+    val estados = listOf(
+        "pendiente",
+        "No puedo hacerlo",
+        "imposible",
+        "completado"
+    )
+
     AlertDialog(
         onDismissRequest = onClose,
-        title = {
-            Text(if (esUpdate) "Editar reporte" else "Nuevo reporte")
-        },
+        title = { Text("Nuevo reporte") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
@@ -42,28 +43,8 @@ fun FormularioReporte(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                val estados = listOf(
-                    "pendiente",
-                    "No puedo hacerlo",
-                    "imposible",
-                    "completado"
-                )
+                Text("Estado")
 
-                ExposedDropdownMenuBox(
-                    expanded = false,
-                    onExpandedChange = {}
-                ) {
-                    OutlinedTextField(
-                        value = estado,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Estado") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    DropdownMenu(expanded = false, onDismissRequest = {}) {}
-                }
-
-                // Selector simple
                 estados.forEach {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -77,8 +58,8 @@ fun FormularioReporte(
                     }
                 }
 
-                if (error != null) {
-                    Text(error!!, color = MaterialTheme.colorScheme.error)
+                error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error)
                 }
             }
         },
@@ -86,26 +67,26 @@ fun FormularioReporte(
             TextButton(
                 enabled = !guardando,
                 onClick = {
-                    if (info.isBlank() || estado.isBlank()) {
-                        error = "Completa todos los campos"
+                    if (info.isBlank()) {
+                        error = "La información no puede estar vacía"
                         return@TextButton
                     }
 
                     scope.launch(Dispatchers.IO) {
                         try {
                             guardando = true
-                            val con = MainActivity.conexion ?: return@launch
 
-                            // 🔥 INSERT (igual que JavaFX)
+                            val con = MainActivity.conexion ?: return@launch
+                            val usuario = MainActivity.usuarioActual ?: return@launch
+
+                            // 🔥 INSERT SIN ESPERAR RESPUESTA
                             con.enviar(
                                 "CREAR_REPORTE" +
                                         MainActivity.SEP + tarea.id +
                                         MainActivity.SEP + info +
                                         MainActivity.SEP + estado +
-                                        MainActivity.SEP + MainActivity.usuarioActual!!.id
+                                        MainActivity.SEP + usuario.id
                             )
-
-                            con.leerRespuestaCompleta()
 
                             onClose()
 

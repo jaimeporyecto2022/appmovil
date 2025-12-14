@@ -22,7 +22,8 @@ import java.time.format.DateTimeFormatter
 
 @Composable
 fun NominasDashboardScreen(
-    usuario: Usuario
+    usuario: Usuario,
+    onBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
 
@@ -33,21 +34,22 @@ fun NominasDashboardScreen(
     var mostrarFormulario by remember { mutableStateOf(false) }
     var nominaEditar by remember { mutableStateOf<Nomina?>(null) }
 
-    // 🔄 CARGA INICIAL
+    suspend fun cargar() {
+        cargando = true
+        nominas = cargarNominasDesdeServidor(usuario.id)
+        cargando = false
+    }
+
+    // ---------- CARGA ----------
     LaunchedEffect(usuario.id) {
-        scope.launch {
-            try {
-                cargando = true
-                nominas = cargarNominasDesdeServidor(usuario.id)
-            } catch (e: Exception) {
-                error = "Error al cargar nóminas"
-            } finally {
-                cargando = false
-            }
+        try {
+            cargar()
+        } catch (e: Exception) {
+            error = "Error al cargar nóminas"
         }
     }
 
-    // 🧾 FORMULARIO
+    // ---------- FORMULARIO ----------
     if (mostrarFormulario) {
         FormularioNominaScreen(
             usuario = usuario,
@@ -55,26 +57,32 @@ fun NominasDashboardScreen(
             onClose = {
                 mostrarFormulario = false
                 nominaEditar = null
-                scope.launch {
-                    nominas = cargarNominasDesdeServidor(usuario.id)
-                }
+                scope.launch { cargar() }
             }
         )
     }
 
+    // ---------- UI ----------
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
 
-        // ---------- CABECERA ----------
+        // CABECERA
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+
+            TextButton(onClick = onBack) {
+                Text("← Volver")
+            }
+
+            Spacer(Modifier.width(8.dp))
+
             Text(
-                text = "Nóminas",
+                text = "Nóminas · ${usuario.nombre}",
                 style = MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.weight(1f)
             )
@@ -87,9 +95,8 @@ fun NominasDashboardScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(Modifier.height(16.dp))
 
-        // ---------- CONTENIDO ----------
         when {
             cargando -> CircularProgressIndicator()
             error != null -> Text(error!!, color = Color.Red)
@@ -97,7 +104,10 @@ fun NominasDashboardScreen(
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(nominas) { nomina ->
+                    items(
+                        items = nominas,
+                        key = { it.id }
+                    ) { nomina ->
                         NominaCard(
                             nomina = nomina,
                             onEditar = {
@@ -111,42 +121,39 @@ fun NominasDashboardScreen(
         }
     }
 }
+
 @Composable
-fun NominaCard(
+private fun NominaCard(
     nomina: Nomina,
     onEditar: () -> Unit
 ) {
     val fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A))
-    ) {
+    Card {
         Column(modifier = Modifier.padding(12.dp)) {
 
             Text(
                 text = String.format("%.2f €", nomina.importe),
-                fontWeight = FontWeight.Bold,
-                color = Color.White
+                fontWeight = FontWeight.Bold
             )
 
             Text(
-                text = "Fecha: ${nomina.fecha?.format(fmt) ?: "—"}",
-                color = Color.LightGray
+                text = "Fecha: ${nomina.fecha?.format(fmt) ?: "—"}"
             )
 
-            Text(
-                text = "Concepto: ${nomina.concepto}",
-                color = Color.LightGray
-            )
+            Text("Concepto: ${nomina.concepto}")
 
             Text(
                 text = "Tipo: ${nomina.tipo}",
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFFFFD700)
+                color = when {
+                    nomina.esSalario() -> Color(0xFF22FF22)
+                    nomina.esDeduccion() -> Color(0xFFFF4444)
+                    else -> Color(0xFFFFD700)
+                }
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(Modifier.height(8.dp))
 
             TextButton(onClick = onEditar) {
                 Text("Editar")
@@ -154,39 +161,36 @@ fun NominaCard(
         }
     }
 }
-suspend fun cargarNominasDesdeServidor(
-    usuarioId: Int
-): List<Nomina> = withContext(Dispatchers.IO) {
 
-    val con = MainActivity.conexion
-        ?: throw IllegalStateException("Sin conexión")
+// ==================== TCP ====================
 
-    con.enviar("NOMINAS_USUARIO${MainActivity.SEP}$usuarioId")
+private suspend fun cargarNominasDesdeServidor(
+    idUsuario: Int
+): List<Nomina> =
+    withContext(Dispatchers.IO) {
 
-    val respuesta = con.leerRespuestaCompleta()
-    val lista = mutableListOf<Nomina>()
+        val con = MainActivity.conexion ?: return@withContext emptyList()
 
-    val lineas = respuesta.split(MainActivity.JUMP)
+        con.enviar("NOMINAS_USUARIO${MainActivity.SEP}$idUsuario")
+        val respuesta = con.leerRespuestaCompleta()
 
-    for (linea in lineas) {
-        if (linea.isBlank()) continue
-
-        val c = linea.split(MainActivity.SEP)
-        if (c.size < 6) continue
-
-        try {
-            val n = Nomina().apply {
-                id = c[0].toInt()
-                importe = c[1].toDouble()
-                fecha = if (c[2].isBlank()) null else LocalDate.parse(c[2])
-                concepto = c[3]
-                tipo = c[4]
-                idUsuario = c[5].toInt()
+        respuesta.split(MainActivity.JUMP)
+            .filter { it.isNotBlank() }
+            .mapNotNull {
+                val c = it.split(MainActivity.SEP)
+                try {
+                    Nomina(
+                        id = c[0].trim().toInt(),
+                        importe = c[1].trim().toDouble(),
+                        fecha = c[2].takeIf { it.isNotBlank() }?.let {
+                            LocalDate.parse(it)
+                        },
+                        concepto = c[3],
+                        tipo = c[4],
+                        idUsuario = c[5].trim().toInt()
+                    )
+                } catch (_: Exception) {
+                    null
+                }
             }
-            lista.add(n)
-        } catch (_: Exception) { }
     }
-
-    lista
-}
-

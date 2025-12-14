@@ -90,35 +90,44 @@ fun DashboardScreen(
                     .fillMaxSize()
                     .padding(padding)
             ) {
+
                 when (pantallaActual) {
+
                     "HOME" -> HomeScreen()
 
-                    "TAREAS_USUARIO" ->
-                        TareasUsuarioDashboardScreen()
+                    "USUARIOS" -> UsuariosScreen()
 
-                    "ASIGNAR" ->
+                    "ASIGNAR" -> {
                         TareasDashboardScreen(
-                            onNuevaTarea = {},
-                            onEditarTarea = {},
-                            onVerReportes = {}
+                            onBack = {
+                                pantallaActual = "USUARIOS"
+                            }
                         )
+                    }
 
-                    "USUARIOS" ->
-                        UsuariosScreen()
+                    "NOMINAS" -> {
+                        NominasDashboardScreen(
+                            usuario = usuario,
+                            onBack = {
+                                pantallaActual = "USUARIOS"
+                            }
+                        )
+                    }
 
-                    "NOMINAS" ->
-                        NominasDashboardScreen(usuario = usuario)
-
-                    "REPORTES" ->
+                    "REPORTES" -> {
                         Text(
                             "Reportes globales (pendiente)",
                             modifier = Modifier.align(Alignment.Center)
                         )
+                    }
+
+                    else -> HomeScreen()
                 }
             }
         }
     }
 }
+
 
 // --------------------------------------------------
 // Drawer lateral

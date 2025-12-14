@@ -23,14 +23,14 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun ReportesScreen(
     tarea: Tarea,
-    hideIt: Boolean
+    onBack: () -> Unit,
+    hideIt: Boolean = false
 ) {
     val scope = rememberCoroutineScope()
 
     var reportes by remember { mutableStateOf<List<Reporte>>(emptyList()) }
     var cargando by remember { mutableStateOf(true) }
     var mostrarFormulario by remember { mutableStateOf(false) }
-    var reporteEditar by remember { mutableStateOf<Reporte?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
     suspend fun cargar() {
@@ -47,18 +47,18 @@ fun ReportesScreen(
         }
     }
 
+    // ---------- FORMULARIO ----------
     if (mostrarFormulario) {
         FormularioReporte(
             tarea = tarea,
-            reporte = reporteEditar,
             onClose = {
                 mostrarFormulario = false
-                reporteEditar = null
                 scope.launch { cargar() }
             }
         )
     }
 
+    // ---------- UI ----------
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -78,10 +78,7 @@ fun ReportesScreen(
             )
 
             if (!hideIt) {
-                Button(onClick = {
-                    reporteEditar = null
-                    mostrarFormulario = true
-                }) {
+                Button(onClick = { mostrarFormulario = true }) {
                     Text("Nuevo reporte")
                 }
             }
@@ -94,33 +91,23 @@ fun ReportesScreen(
             error != null -> Text(error!!, color = Color.Red)
             else -> {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(reportes) { reporte ->
-                        ReporteCard(
-                            reporte = reporte,
-                            onEditar = {
-                                reporteEditar = reporte
-                                mostrarFormulario = true
-                            },
-                            onCerrar = {
-                                scope.launch {
-                                    cerrarReporte(reporte)
-                                    cargar()
-                                }
-                            }
-                        )
+                    items(reportes, key = { it.id }) { reporte ->
+                        ReporteCard(reporte = reporte)
                     }
                 }
             }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        Button(onClick = onBack) {
+            Text("Volver")
         }
     }
 }
 
 @Composable
-private fun ReporteCard(
-    reporte: Reporte,
-    onEditar: () -> Unit,
-    onCerrar: () -> Unit
-) {
+private fun ReporteCard(reporte: Reporte) {
     val fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
     Card {
@@ -130,7 +117,9 @@ private fun ReporteCard(
                 "Creación: ${reporte.fechacreacion?.format(fmt) ?: "—"}",
                 fontWeight = FontWeight.Bold
             )
+
             Text("Usuario: ${reporte.nombreUsuario}")
+
             Text(
                 "Estado: ${reporte.estado}",
                 color = if (reporte.estado.lowercase() == "cerrado")
@@ -139,17 +128,7 @@ private fun ReporteCard(
 
             Spacer(Modifier.height(6.dp))
 
-            Text(
-                reporte.informacion?.take(20)?.plus("...") ?: ""
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            Row {
-                TextButton(onClick = onEditar) { Text("Editar") }
-                Spacer(Modifier.width(8.dp))
-                TextButton(onClick = onCerrar) { Text("Cerrar") }
-            }
+            Text(reporte.informacion ?: "")
         }
     }
 }
@@ -182,11 +161,3 @@ suspend fun cargarReportesDesdeServidor(idTarea: Int): List<Reporte> =
                 }
             }
     }
-
-suspend fun cerrarReporte(reporte: Reporte) {
-    withContext(Dispatchers.IO) {
-        val con = MainActivity.conexion ?: return@withContext
-        con.enviar("CERRAR_REPORTE${MainActivity.SEP}${reporte.id}")
-        con.leerRespuestaCompleta()
-    }
-}

@@ -3,17 +3,22 @@ package movil.proyect.formularios
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import movil.proyect.MainActivity
 import movil.proyect.Modelos.Tarea
 import movil.proyect.Modelos.Usuario
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FormularioTareaScreen(
     tarea: Tarea? = null,
@@ -26,37 +31,92 @@ fun FormularioTareaScreen(
     var descripcion by remember { mutableStateOf(tarea?.descripcion ?: "") }
     var estado by remember { mutableStateOf(tarea?.estado ?: "pendiente") }
 
+    var fechaInicio by remember { mutableStateOf<LocalDate?>(tarea?.fechaInicio) }
+    var fechaFin by remember { mutableStateOf<LocalDate?>(tarea?.fechaFin) }
+
     var usuarios by remember { mutableStateOf<List<Usuario>>(emptyList()) }
     var usuarioSeleccionado by remember { mutableStateOf<Usuario?>(null) }
 
     var estadoMenu by remember { mutableStateOf(false) }
     var usuarioMenu by remember { mutableStateOf(false) }
 
+    var mostrarInicioPicker by remember { mutableStateOf(false) }
+    var mostrarFinPicker by remember { mutableStateOf(false) }
+
     val estados = listOf("pendiente", "completado", "imposible")
 
-    // 🔄 cargar usuarios
+    // ================= CARGAR USUARIOS =================
     LaunchedEffect(Unit) {
         usuarios = cargarUsuarios()
         if (esUpdate) {
             usuarioSeleccionado =
-                usuarios.find { it.id == tarea!!.idAsignado }
+                usuarios.find { it.id == tarea?.idAsignado }
         }
     }
 
+    // ================= DATE PICKERS =================
+    if (mostrarInicioPicker) {
+        DatePickerDialog(
+            onDismissRequest = { mostrarInicioPicker = false },
+            confirmButton = {
+                TextButton(onClick = { mostrarInicioPicker = false }) {
+                    Text("OK")
+                }
+            }
+        ) {
+            val pickerState = rememberDatePickerState()
+            DatePicker(state = pickerState)
+            pickerState.selectedDateMillis?.let {
+                fechaInicio = Instant.ofEpochMilli(it)
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDate()
+            }
+        }
+    }
+
+    if (mostrarFinPicker) {
+        DatePickerDialog(
+            onDismissRequest = { mostrarFinPicker = false },
+            confirmButton = {
+                TextButton(onClick = { mostrarFinPicker = false }) {
+                    Text("OK")
+                }
+            }
+        ) {
+            val pickerState = rememberDatePickerState()
+            DatePicker(state = pickerState)
+            pickerState.selectedDateMillis?.let {
+                fechaFin = Instant.ofEpochMilli(it)
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDate()
+            }
+        }
+    }
+
+    // ================= UI =================
     AlertDialog(
         onDismissRequest = onClose,
+        title = {
+            Text(if (esUpdate) "Editar tarea" else "Nueva tarea")
+        },
         confirmButton = {
-            Button(onClick = {
-                guardarTarea(
-                    esUpdate = esUpdate,
-                    tareaId = tarea?.id,
-                    titulo = titulo,
-                    descripcion = descripcion,
-                    estado = estado,
-                    usuario = usuarioSeleccionado,
-                    onClose = onClose
-                )
-            }) {
+            Button(
+                onClick = {
+                    scope.launch {
+                        guardarTarea(
+                            esUpdate = esUpdate,
+                            tareaId = tarea?.id,
+                            titulo = titulo,
+                            descripcion = descripcion,
+                            estado = estado,
+                            usuario = usuarioSeleccionado,
+                            inicio = fechaInicio,
+                            fin = fechaFin
+                        )
+                        onClose()
+                    }
+                }
+            ) {
                 Text("Guardar")
             }
         },
@@ -64,9 +124,6 @@ fun FormularioTareaScreen(
             TextButton(onClick = onClose) {
                 Text("Cancelar")
             }
-        },
-        title = {
-            Text(if (esUpdate) "Editar tarea" else "Nueva tarea")
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -146,51 +203,78 @@ fun FormularioTareaScreen(
                         }
                     }
                 }
+
+                // -------- FECHAS --------
+                OutlinedButton(
+                    onClick = { mostrarInicioPicker = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.DateRange, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Inicio: ${fechaInicio ?: "Sin fecha"}")
+                }
+
+                OutlinedButton(
+                    onClick = { mostrarFinPicker = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.DateRange, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Fin: ${fechaFin ?: "Sin fecha"}")
+                }
             }
         }
     )
 }
 
-/* ===========================
-   ======== GUARDAR ==========
-   =========================== */
+/* ======================================================
+   ===================== GUARDAR ========================
+   ====================================================== */
 
-private fun guardarTarea(
+private suspend fun guardarTarea(
     esUpdate: Boolean,
     tareaId: Int?,
     titulo: String,
     descripcion: String,
     estado: String,
     usuario: Usuario?,
-    onClose: () -> Unit
+    inicio: LocalDate?,
+    fin: LocalDate?
 ) {
     if (titulo.isBlank() || usuario == null) return
 
     val con = MainActivity.conexion ?: return
     val creador = MainActivity.usuarioActual ?: return
 
-    if (esUpdate) {
-        con.enviar(
-            "UPDATE_TAREA${MainActivity.SEP}$tareaId${MainActivity.SEP}${creador.id}" +
-                    "${MainActivity.SEP}${usuario.id}${MainActivity.SEP}$descripcion" +
-                    "${MainActivity.SEP}${LocalDate.now()}${MainActivity.SEP}${LocalDate.now()}" +
-                    "${MainActivity.SEP}$estado${MainActivity.SEP}$titulo"
-        )
-    } else {
-        con.enviar(
-            "INSERT_TAREA${MainActivity.SEP}${creador.id}${MainActivity.SEP}${usuario.id}" +
-                    "${MainActivity.SEP}$descripcion${MainActivity.SEP}${LocalDate.now()}" +
-                    "${MainActivity.SEP}${LocalDate.now()}${MainActivity.SEP}$estado" +
-                    "${MainActivity.SEP}$titulo"
-        )
+    withContext(Dispatchers.IO) {
+        if (esUpdate) {
+            con.enviar(
+                "UPDATE_TAREA${MainActivity.SEP}$tareaId" +
+                        "${MainActivity.SEP}${creador.id}" +
+                        "${MainActivity.SEP}${usuario.id}" +
+                        "${MainActivity.SEP}$descripcion" +
+                        "${MainActivity.SEP}${inicio ?: ""}" +
+                        "${MainActivity.SEP}${fin ?: ""}" +
+                        "${MainActivity.SEP}$estado" +
+                        "${MainActivity.SEP}$titulo"
+            )
+        } else {
+            con.enviar(
+                "INSERT_TAREA${MainActivity.SEP}${creador.id}" +
+                        "${MainActivity.SEP}${usuario.id}" +
+                        "${MainActivity.SEP}$descripcion" +
+                        "${MainActivity.SEP}${inicio ?: ""}" +
+                        "${MainActivity.SEP}${fin ?: ""}" +
+                        "${MainActivity.SEP}$estado" +
+                        "${MainActivity.SEP}$titulo"
+            )
+        }
     }
-
-    onClose()
 }
 
-/* ===========================
-   ===== CARGAR USUARIOS =====
-   =========================== */
+/* ======================================================
+   ================= CARGAR USUARIOS ====================
+   ====================================================== */
 
 private suspend fun cargarUsuarios(): List<Usuario> =
     withContext(Dispatchers.IO) {
@@ -207,15 +291,17 @@ private suspend fun cargarUsuarios(): List<Usuario> =
         val resp = con.leerRespuestaCompleta()
         val lista = mutableListOf<Usuario>()
 
-        resp.split(MainActivity.JUMP).forEach {
-            val c = it.split(MainActivity.SEP)
+        resp.split(MainActivity.JUMP).forEach { linea ->
+            val c = linea.trim().split(MainActivity.SEP)
             if (c.size >= 2) {
-                lista.add(
-                    Usuario(
-                        id = c[0].toInt(),
-                        nombre = c[1]
+                try {
+                    lista.add(
+                        Usuario(
+                            id = c[0].trim().toInt(),
+                            nombre = c[1].trim()
+                        )
                     )
-                )
+                } catch (_: Exception) {}
             }
         }
 

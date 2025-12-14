@@ -3,7 +3,7 @@ package movil.proyect.Modelos
 import java.time.LocalDate
 
 data class Reporte(
-    var id: Int? = null,
+    var id: Int =0,
     var fechacreacion: LocalDate? = null,
     var informacion: String = "",
     var estado: String = "en_curso",  // en_curso, finalizada, irrealizable, transferir

@@ -1,13 +1,8 @@
 package movil.proyect.dashboard
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Receipt
-import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,134 +12,113 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import movil.proyect.MainActivity
 import movil.proyect.Modelos.Usuario
-import java.time.format.DateTimeFormatter
+import movil.proyect.formularios.FormularioUsuarioScreen
 
 @Composable
-fun UsuariosScreen(
-    onNuevoUsuario: () -> Unit = {},
-    onEditarUsuario: (Usuario) -> Unit = {},
-    onVerNominas: (Usuario) -> Unit = {}
-) {
+fun UsuariosScreen() {
+
     val scope = rememberCoroutineScope()
+
     var usuarios by remember { mutableStateOf<List<Usuario>>(emptyList()) }
     var cargando by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    val usuarioActual = MainActivity.usuarioActual
-    val conexion = MainActivity.conexion
+    // navegación interna
+    var mostrarFormulario by remember { mutableStateOf(false) }
+    var usuarioEditar by remember { mutableStateOf<Usuario?>(null) }
 
-    val puedeEditar =
-        usuarioActual?.esAdmin() == true ||
-                usuarioActual?.nombreDepartamento == "Recursos Humanos"
+    var verNominas by remember { mutableStateOf(false) }
+    var usuarioNominas by remember { mutableStateOf<Usuario?>(null) }
 
-    val puedeVerNominas =
-        usuarioActual?.esAdmin() == true ||
-                usuarioActual?.nombreDepartamento == "contabilidad"
-
-    LaunchedEffect(Unit) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                if (conexion == null) {
-                    error = "Sin conexión"
-                    cargando = false
-                    return@launch
-                }
-
-                conexion.enviar("TODOS_USUARIOS")
-                val respuesta = conexion.leerRespuestaCompleta()
-
-                val lista = respuesta
-                    .split(MainActivity.JUMP)
-                    .filter { it.isNotBlank() }
-                    .mapNotNull { linea ->
-                        val c = linea.split(MainActivity.SEP)
-                        if (c.size < 8) return@mapNotNull null
-
-                        try {
-                            Usuario(
-                                id = c[0].toInt(),
-                                nombre = c[1],
-                                mail = c[2],
-                                rol = c[3],
-                                idDepartamento = c[4].toInt(),
-                                nombreDepartamento = c[5],
-                                fechaAlta = c[6].takeIf { it.isNotBlank() }
-                                    ?.let { java.time.LocalDate.parse(it) },
-                                direccion = c[7]
-                            )
-                        } catch (_: Exception) {
-                            null
-                        }
-                    }
-
-                usuarios = lista
-                cargando = false
-
-            } catch (e: Exception) {
-                e.printStackTrace()
-                error = "Error cargando usuarios"
-                cargando = false
+    // ---------- NÓMINAS ----------
+    if (verNominas && usuarioNominas != null) {
+        NominasDashboardScreen(
+            usuario = usuarioNominas!!,
+            onBack = {
+                verNominas = false
+                usuarioNominas = null
             }
+        )
+        return
+    }
+
+    // ---------- FORMULARIO ----------
+    if (mostrarFormulario) {
+        FormularioUsuarioScreen(
+            usuario = usuarioEditar,
+            onClose = {
+                mostrarFormulario = false
+                usuarioEditar = null
+                scope.launch { cargarUsuarios { usuarios = it } }
+            }
+        )
+    }
+
+    // ---------- CARGA ----------
+    LaunchedEffect(Unit) {
+        try {
+            cargando = true
+            cargarUsuarios { usuarios = it }
+        } catch (e: Exception) {
+            error = "Error al cargar usuarios"
+        } finally {
+            cargando = false
         }
     }
 
+    // ---------- UI ----------
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
 
-        // 🔝 BARRA SUPERIOR
+        // CABECERA
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "Usuarios",
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
+                text = "Usuarios",
+                style = MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.weight(1f)
             )
 
-            if (puedeEditar) {
-                IconButton(onClick = onNuevoUsuario) {
-                    Icon(
-                        imageVector = Icons.Default.PersonAdd,
-                        contentDescription = "Nuevo usuario"
-                    )
-                }
+            Button(onClick = {
+                usuarioEditar = null
+                mostrarFormulario = true
+            }) {
+                Text("Nuevo usuario")
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
         when {
-            cargando -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            }
-
-            error != null -> {
-                Text(error!!, color = Color.Red)
-            }
-
+            cargando -> CircularProgressIndicator()
+            error != null -> Text(error!!, color = Color.Red)
             else -> {
-                LazyColumn {
-                    items(usuarios) { usuario ->
-                        UsuarioRow(
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(
+                        items = usuarios,
+                        key = { it.id }
+                    ) { usuario ->
+                        UsuarioCard(
                             usuario = usuario,
-                            puedeEditar = puedeEditar,
-                            puedeVerNominas = puedeVerNominas,
-                            onEditar = { onEditarUsuario(usuario) },
-                            onNominas = { onVerNominas(usuario) }
+                            onEditar = {
+                                usuarioEditar = usuario
+                                mostrarFormulario = true
+                            },
+                            onVerNominas = {
+                                usuarioNominas = usuario
+                                verNominas = true
+                            }
                         )
-                        Divider()
                     }
                 }
             }
@@ -153,50 +127,65 @@ fun UsuariosScreen(
 }
 
 @Composable
-private fun UsuarioRow(
+private fun UsuarioCard(
     usuario: Usuario,
-    puedeEditar: Boolean,
-    puedeVerNominas: Boolean,
     onEditar: () -> Unit,
-    onNominas: () -> Unit
+    onVerNominas: () -> Unit
 ) {
-    val fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+    Card {
+        Column(modifier = Modifier.padding(12.dp)) {
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF111111))
-            .padding(12.dp)
-    ) {
-        Text(usuario.nombre, fontWeight = FontWeight.Bold)
-        Text(usuario.mail)
-        Text("Rol: ${usuario.rol}")
-        Text("Departamento: ${usuario.nombreDepartamento}")
-        Text(
-            "Alta: ${
-                usuario.fechaAlta?.format(fmt) ?: "—"
-            }"
-        )
+            Text(
+                usuario.nombre,
+                fontWeight = FontWeight.Bold
+            )
 
-        Spacer(Modifier.height(8.dp))
+            Text("Mail: ${usuario.mail}")
+            Text("Rol: ${usuario.rol}")
+            Text("Departamento: ${usuario.nombreDepartamento}")
 
-        Row {
-            if (puedeVerNominas) {
-                IconButton(onClick = onNominas) {
-                    Icon(
-                        imageVector = Icons.Default.Receipt,
-                        contentDescription = "Nóminas"
-                    )
+            Spacer(Modifier.height(8.dp))
+
+            Row {
+                TextButton(onClick = onEditar) {
+                    Text("Editar")
                 }
-            }
-            if (puedeEditar) {
-                IconButton(onClick = onEditar) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Editar usuario"
-                    )
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = onVerNominas) {
+                    Text("Nóminas")
                 }
             }
         }
     }
 }
+
+// ==================== TCP ====================
+
+private suspend fun cargarUsuarios(onResult: (List<Usuario>) -> Unit) =
+    withContext(Dispatchers.IO) {
+
+        val con = MainActivity.conexion ?: return@withContext
+        con.enviar("USUARIOS")
+
+        val respuesta = con.leerRespuestaCompleta()
+
+        val lista = respuesta
+            .split(MainActivity.JUMP)
+            .filter { it.isNotBlank() }
+            .mapNotNull {
+                val c = it.split(MainActivity.SEP)
+                try {
+                    Usuario(
+                        id = c[0].trim().toInt(),
+                        nombre = c[1],
+                        mail = c[2],
+                        rol = c[3],
+                        nombreDepartamento = c.getOrNull(4) ?: ""
+                    )
+                } catch (_: Exception) {
+                    null
+                }
+            }
+
+        onResult(lista)
+    }
