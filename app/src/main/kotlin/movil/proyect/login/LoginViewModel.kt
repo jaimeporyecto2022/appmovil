@@ -1,20 +1,18 @@
 package movil.proyect.login
-import androidx.compose.runtime.*
-import androidx.compose.material3.*
-import androidx.compose.foundation.layout.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.Color
-import movil.proyect.Modelos.Usuario
+
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.*
 import movil.proyect.MainActivity
+import movil.proyect.Modelos.Usuario
 import movil.proyect.network.ConexionCliente
 import java.time.LocalDate
+
 class LoginViewModel : ViewModel() {
 
     data class UiState(
@@ -44,50 +42,41 @@ class LoginViewModel : ViewModel() {
             return
         }
 
-        mostrarMensaje("Conectando al Servidor...", false)
+        mostrarMensaje("Conectando al servidor...", false)
 
         viewModelScope.launch(Dispatchers.IO) {
-            val conexion = MainActivity.conexion
-            if (conexion == null) {
-                withContext(Dispatchers.Main) {
-                    mostrarError("No hay conexión con el servidor")
-                }
-                return@launch
-            }
+            val con = ConexionCliente("192.168.0.13", 5000)
 
             try {
-                // 👇 MISMO MENSAJE que JavaFX
-                conexion.enviar(
-                    "LOGIN${MainActivity.SEP}$usuario${MainActivity.SEP}$password"
-                )
+                // 🔌 CONECTAR
+                con.conectar()
 
-                val respuesta = conexion.leerRespuestaCompleta()
-                println("RESPUESTA CRUDA -> [$respuesta]")
+                // 📤 ENVIAR LOGIN (PROTOCOLO CORRECTO)
+                val mensaje = "LOGIN${MainActivity.SEP}$usuario${MainActivity.SEP}$password"
+                con.enviar(mensaje)
+
+                // 📥 LEER RESPUESTA
+                val respuesta = con.leerRespuestaCompleta()
+                Log.d("LOGIN", "RESPUESTA CRUDA -> [$respuesta]")
+
                 withContext(Dispatchers.Main) {
-                    when {
-                        respuesta.startsWith("LOGIN_OK") -> {
-                            val user = crearUsuarioDesdeRespuesta(respuesta)
-                            MainActivity.usuarioActual = user
-                            onOK(user)
-                        }
-
-                        respuesta.startsWith("LOGIN_ERROR") -> {
-                            val msg = respuesta.split(MainActivity.SEP, limit = 2)
-                                .getOrNull(1)
-                                ?: "Acceso denegado"
-                            mostrarError(msg)
-                        }
-
-                        else -> {
-                            mostrarError("Respuesta desconocida del servidor")
-                        }
+                    if (respuesta.trim().startsWith("LOGIN_OK")) {
+                        val user = crearUsuarioDesdeRespuesta(respuesta)
+                        MainActivity.usuarioActual = user
+                        MainActivity.conexion = con
+                        onOK(user)
+                    } else {
+                        mostrarError("Usuario o contraseña incorrectos")
+                        con.cerrar()
                     }
                 }
 
             } catch (e: Exception) {
+                Log.e("LOGIN", "Error en login", e)
                 withContext(Dispatchers.Main) {
                     mostrarError("No se pudo conectar al servidor")
                 }
+                con.cerrar()
             }
         }
     }
@@ -102,7 +91,8 @@ class LoginViewModel : ViewModel() {
             rol = datos[4],
             idDepartamento = datos[5].toIntOrNull() ?: 0,
             nombreDepartamento = datos[6],
-            fechaAlta = datos[7].takeIf { it.isNotBlank() && it != "null" }
+            fechaAlta = datos[7]
+                .takeIf { it.isNotBlank() && it != "null" }
                 ?.let { LocalDate.parse(it) },
             direccion = datos.getOrNull(8) ?: ""
         )

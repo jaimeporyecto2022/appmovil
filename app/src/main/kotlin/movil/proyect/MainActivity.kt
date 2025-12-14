@@ -38,16 +38,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 🔌 CONECTAR AL SERVIDOR AL ARRANCAR LA APP
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                conexion = ConexionCliente("192.168.0.13", 5000)
-                conexion?.conectar()
-                println("✅ Conectado al servidor")
-            } catch (e: Exception) {
-                println("❌ Error conectando: ${e.message}")
-            }
-        }
+        
 
         setContent {
             MovilProyect_AppTheme {

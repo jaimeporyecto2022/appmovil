@@ -6,8 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Receipt
-import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,32 +17,24 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import movil.proyect.MainActivity
+import movil.proyect.Modelos.Nomina
 import movil.proyect.Modelos.Usuario
 import java.time.format.DateTimeFormatter
 
 @Composable
-fun UsuariosScreen(
-    onNuevoUsuario: () -> Unit = {},
-    onEditarUsuario: (Usuario) -> Unit = {},
-    onVerNominas: (Usuario) -> Unit = {}
+fun NominasScreen(
+    usuario: Usuario,
+    onNuevaNomina: () -> Unit = {},
+    onEditarNomina: (Nomina) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
-    var usuarios by remember { mutableStateOf<List<Usuario>>(emptyList()) }
+    var nominas by remember { mutableStateOf<List<Nomina>>(emptyList()) }
     var cargando by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    val usuarioActual = MainActivity.usuarioActual
     val conexion = MainActivity.conexion
 
-    val puedeEditar =
-        usuarioActual?.esAdmin() == true ||
-                usuarioActual?.nombreDepartamento == "Recursos Humanos"
-
-    val puedeVerNominas =
-        usuarioActual?.esAdmin() == true ||
-                usuarioActual?.nombreDepartamento == "contabilidad"
-
-    LaunchedEffect(Unit) {
+    LaunchedEffect(usuario.id) {
         scope.launch(Dispatchers.IO) {
             try {
                 if (conexion == null) {
@@ -52,7 +43,10 @@ fun UsuariosScreen(
                     return@launch
                 }
 
-                conexion.enviar("TODOS_USUARIOS")
+                conexion.enviar(
+                    "NOMINAS_USUARIO${MainActivity.SEP}${usuario.id}"
+                )
+
                 val respuesta = conexion.leerRespuestaCompleta()
 
                 val lista = respuesta
@@ -60,31 +54,29 @@ fun UsuariosScreen(
                     .filter { it.isNotBlank() }
                     .mapNotNull { linea ->
                         val c = linea.split(MainActivity.SEP)
-                        if (c.size < 8) return@mapNotNull null
+                        if (c.size < 6) return@mapNotNull null
 
                         try {
-                            Usuario(
+                            Nomina(
                                 id = c[0].toInt(),
-                                nombre = c[1],
-                                mail = c[2],
-                                rol = c[3],
-                                idDepartamento = c[4].toIntOrNull(),
-                                nombreDepartamento = c[5],
-                                fechaAlta = c[6].takeIf { it.isNotBlank() }
+                                importe = c[1].toDouble(),
+                                fecha = c[2].takeIf { it.isNotBlank() }
                                     ?.let { java.time.LocalDate.parse(it) },
-                                direccion = c[7]
+                                concepto = c[3],
+                                tipo = c[4],
+                                idUsuario = c[5].toInt()
                             )
                         } catch (_: Exception) {
                             null
                         }
                     }
 
-                usuarios = lista
+                nominas = lista
                 cargando = false
 
             } catch (e: Exception) {
                 e.printStackTrace()
-                error = "Error cargando usuarios"
+                error = "Error cargando nóminas"
                 cargando = false
             }
         }
@@ -102,19 +94,17 @@ fun UsuariosScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "Usuarios",
+                text = "Nóminas",
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
             )
 
-            if (puedeEditar) {
-                IconButton(onClick = onNuevoUsuario) {
-                    Icon(
-                        imageVector = Icons.Default.PersonAdd,
-                        contentDescription = "Nuevo usuario"
-                    )
-                }
+            IconButton(onClick = onNuevaNomina) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Nueva nómina"
+                )
             }
         }
 
@@ -134,15 +124,16 @@ fun UsuariosScreen(
                 Text(error!!, color = Color.Red)
             }
 
+            nominas.isEmpty() -> {
+                Text("No hay nóminas registradas")
+            }
+
             else -> {
                 LazyColumn {
-                    items(usuarios) { usuario ->
-                        UsuarioRow(
-                            usuario = usuario,
-                            puedeEditar = puedeEditar,
-                            puedeVerNominas = puedeVerNominas,
-                            onEditar = { onEditarUsuario(usuario) },
-                            onNominas = { onVerNominas(usuario) }
+                    items(nominas) { nomina ->
+                        NominaRow(
+                            nomina = nomina,
+                            onEditar = { onEditarNomina(nomina) }
                         )
                         Divider()
                     }
@@ -153,12 +144,9 @@ fun UsuariosScreen(
 }
 
 @Composable
-private fun UsuarioRow(
-    usuario: Usuario,
-    puedeEditar: Boolean,
-    puedeVerNominas: Boolean,
-    onEditar: () -> Unit,
-    onNominas: () -> Unit
+private fun NominaRow(
+    nomina: Nomina,
+    onEditar: () -> Unit
 ) {
     val fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
@@ -168,35 +156,25 @@ private fun UsuarioRow(
             .background(Color(0xFF111111))
             .padding(12.dp)
     ) {
-        Text(usuario.nombre, fontWeight = FontWeight.Bold)
-        Text(usuario.mail)
-        Text("Rol: ${usuario.rol}")
-        Text("Departamento: ${usuario.nombreDepartamento}")
         Text(
-            "Alta: ${
-                usuario.fechaAlta?.format(fmt) ?: "—"
-            }"
+            text = String.format("%.2f €", nomina.importe),
+            fontWeight = FontWeight.Bold
         )
+
+        Text(
+            text = "Fecha: ${nomina.fecha?.format(fmt) ?: "—"}"
+        )
+
+        Text("Concepto: ${nomina.concepto}")
+        Text("Tipo: ${nomina.tipo}")
 
         Spacer(Modifier.height(8.dp))
 
-        Row {
-            if (puedeVerNominas) {
-                IconButton(onClick = onNominas) {
-                    Icon(
-                        imageVector = Icons.Default.Receipt,
-                        contentDescription = "Nóminas"
-                    )
-                }
-            }
-            if (puedeEditar) {
-                IconButton(onClick = onEditar) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Editar usuario"
-                    )
-                }
-            }
+        IconButton(onClick = onEditar) {
+            Icon(
+                imageVector = Icons.Default.Edit,
+                contentDescription = "Editar nómina"
+            )
         }
     }
 }

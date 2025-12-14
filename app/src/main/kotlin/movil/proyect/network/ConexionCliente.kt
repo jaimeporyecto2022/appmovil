@@ -9,28 +9,27 @@ class ConexionCliente(
     private val host: String,
     private val port: Int
 ) {
-
     private var socket: Socket? = null
     private var out: PrintWriter? = null
     private var input: BufferedReader? = null
 
     private var ultimaRespuesta: String = ""
 
-    suspend fun conectar() = withContext(Dispatchers.IO) {
+    fun conectar() {
         socket = Socket(host, port)
         out = PrintWriter(socket!!.getOutputStream(), true)
         input = BufferedReader(InputStreamReader(socket!!.getInputStream()))
     }
 
-    suspend fun enviar(mensaje: String) = withContext(Dispatchers.IO) {
+    fun enviar(mensaje: String) {
         out?.println(mensaje)
     }
 
-    suspend fun leerLinea(): String? = withContext(Dispatchers.IO) {
-        input?.readLine()
+    fun leerLinea(): String? {
+        return input?.readLine()
     }
 
-    suspend fun leerRespuestaCompleta(): String = withContext(Dispatchers.IO) {
+    fun leerRespuestaCompleta(): String {
         val sb = StringBuilder()
         var linea: String?
 
@@ -41,12 +40,10 @@ class ConexionCliente(
         }
 
         ultimaRespuesta = sb.toString().trim()
-        ultimaRespuesta
+        return ultimaRespuesta
     }
 
     fun cerrar() {
-        try {
-            socket?.close()
-        } catch (_: Exception) {}
+        try { socket?.close() } catch (_: Exception) {}
     }
 }

@@ -18,7 +18,7 @@ import movil.proyect.MainActivity
 import movil.proyect.Modelos.Tarea
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-@Composable
+@Composable//esta clase es para ver las tareas al usuario en sesion
 fun TareasUsuarioDashboardScreen() {
 
     val scope = rememberCoroutineScope()
