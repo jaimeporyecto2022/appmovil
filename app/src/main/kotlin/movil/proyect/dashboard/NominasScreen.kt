@@ -1,12 +1,8 @@
 package movil.proyect.dashboard
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,70 +12,54 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import movil.proyect.MainActivity
 import movil.proyect.Modelos.Nomina
 import movil.proyect.Modelos.Usuario
+import movil.proyect.formularios.FormularioNominaScreen
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 @Composable
-fun NominasScreen(
-    usuario: Usuario,
-    onNuevaNomina: () -> Unit = {},
-    onEditarNomina: (Nomina) -> Unit = {}
+fun NominasDashboardScreen(
+    usuario: Usuario
 ) {
     val scope = rememberCoroutineScope()
+
     var nominas by remember { mutableStateOf<List<Nomina>>(emptyList()) }
     var cargando by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    val conexion = MainActivity.conexion
+    var mostrarFormulario by remember { mutableStateOf(false) }
+    var nominaEditar by remember { mutableStateOf<Nomina?>(null) }
 
+    // 🔄 CARGA INICIAL
     LaunchedEffect(usuario.id) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch {
             try {
-                if (conexion == null) {
-                    error = "Sin conexión"
-                    cargando = false
-                    return@launch
-                }
-
-                conexion.enviar(
-                    "NOMINAS_USUARIO${MainActivity.SEP}${usuario.id}"
-                )
-
-                val respuesta = conexion.leerRespuestaCompleta()
-
-                val lista = respuesta
-                    .split(MainActivity.JUMP)
-                    .filter { it.isNotBlank() }
-                    .mapNotNull { linea ->
-                        val c = linea.split(MainActivity.SEP)
-                        if (c.size < 6) return@mapNotNull null
-
-                        try {
-                            Nomina(
-                                id = c[0].toInt(),
-                                importe = c[1].toDouble(),
-                                fecha = c[2].takeIf { it.isNotBlank() }
-                                    ?.let { java.time.LocalDate.parse(it) },
-                                concepto = c[3],
-                                tipo = c[4],
-                                idUsuario = c[5].toInt()
-                            )
-                        } catch (_: Exception) {
-                            null
-                        }
-                    }
-
-                nominas = lista
-                cargando = false
-
+                cargando = true
+                nominas = cargarNominasDesdeServidor(usuario.id)
             } catch (e: Exception) {
-                e.printStackTrace()
-                error = "Error cargando nóminas"
+                error = "Error al cargar nóminas"
+            } finally {
                 cargando = false
             }
         }
+    }
+
+    // 🧾 FORMULARIO
+    if (mostrarFormulario) {
+        FormularioNominaScreen(
+            usuario = usuario,
+            nomina = nominaEditar,
+            onClose = {
+                mostrarFormulario = false
+                nominaEditar = null
+                scope.launch {
+                    nominas = cargarNominasDesdeServidor(usuario.id)
+                }
+            }
+        )
     }
 
     Column(
@@ -88,93 +68,125 @@ fun NominasScreen(
             .padding(16.dp)
     ) {
 
-        // 🔝 BARRA SUPERIOR
+        // ---------- CABECERA ----------
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
         ) {
             Text(
                 text = "Nóminas",
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.weight(1f)
             )
 
-            IconButton(onClick = onNuevaNomina) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Nueva nómina"
-                )
+            Button(onClick = {
+                nominaEditar = null
+                mostrarFormulario = true
+            }) {
+                Text("Nueva nómina")
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
+        // ---------- CONTENIDO ----------
         when {
-            cargando -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            }
-
-            error != null -> {
-                Text(error!!, color = Color.Red)
-            }
-
-            nominas.isEmpty() -> {
-                Text("No hay nóminas registradas")
-            }
-
+            cargando -> CircularProgressIndicator()
+            error != null -> Text(error!!, color = Color.Red)
             else -> {
-                LazyColumn {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     items(nominas) { nomina ->
-                        NominaRow(
+                        NominaCard(
                             nomina = nomina,
-                            onEditar = { onEditarNomina(nomina) }
+                            onEditar = {
+                                nominaEditar = nomina
+                                mostrarFormulario = true
+                            }
                         )
-                        Divider()
                     }
                 }
             }
         }
     }
 }
-
 @Composable
-private fun NominaRow(
+fun NominaCard(
     nomina: Nomina,
     onEditar: () -> Unit
 ) {
     val fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF111111))
-            .padding(12.dp)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A))
     ) {
-        Text(
-            text = String.format("%.2f €", nomina.importe),
-            fontWeight = FontWeight.Bold
-        )
+        Column(modifier = Modifier.padding(12.dp)) {
 
-        Text(
-            text = "Fecha: ${nomina.fecha?.format(fmt) ?: "—"}"
-        )
-
-        Text("Concepto: ${nomina.concepto}")
-        Text("Tipo: ${nomina.tipo}")
-
-        Spacer(Modifier.height(8.dp))
-
-        IconButton(onClick = onEditar) {
-            Icon(
-                imageVector = Icons.Default.Edit,
-                contentDescription = "Editar nómina"
+            Text(
+                text = String.format("%.2f €", nomina.importe),
+                fontWeight = FontWeight.Bold,
+                color = Color.White
             )
+
+            Text(
+                text = "Fecha: ${nomina.fecha?.format(fmt) ?: "—"}",
+                color = Color.LightGray
+            )
+
+            Text(
+                text = "Concepto: ${nomina.concepto}",
+                color = Color.LightGray
+            )
+
+            Text(
+                text = "Tipo: ${nomina.tipo}",
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFFFD700)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            TextButton(onClick = onEditar) {
+                Text("Editar")
+            }
         }
     }
 }
+suspend fun cargarNominasDesdeServidor(
+    usuarioId: Int
+): List<Nomina> = withContext(Dispatchers.IO) {
+
+    val con = MainActivity.conexion
+        ?: throw IllegalStateException("Sin conexión")
+
+    con.enviar("NOMINAS_USUARIO${MainActivity.SEP}$usuarioId")
+
+    val respuesta = con.leerRespuestaCompleta()
+    val lista = mutableListOf<Nomina>()
+
+    val lineas = respuesta.split(MainActivity.JUMP)
+
+    for (linea in lineas) {
+        if (linea.isBlank()) continue
+
+        val c = linea.split(MainActivity.SEP)
+        if (c.size < 6) continue
+
+        try {
+            val n = Nomina().apply {
+                id = c[0].toInt()
+                importe = c[1].toDouble()
+                fecha = if (c[2].isBlank()) null else LocalDate.parse(c[2])
+                concepto = c[3]
+                tipo = c[4]
+                idUsuario = c[5].toInt()
+            }
+            lista.add(n)
+        } catch (_: Exception) { }
+    }
+
+    lista
+}
+

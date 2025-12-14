@@ -68,7 +68,7 @@ fun UsuariosScreen(
                                 nombre = c[1],
                                 mail = c[2],
                                 rol = c[3],
-                                idDepartamento = c[4].toIntOrNull(),
+                                idDepartamento = c[4].toInt(),
                                 nombreDepartamento = c[5],
                                 fechaAlta = c[6].takeIf { it.isNotBlank() }
                                     ?.let { java.time.LocalDate.parse(it) },

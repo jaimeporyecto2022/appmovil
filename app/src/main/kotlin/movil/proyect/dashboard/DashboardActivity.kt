@@ -55,10 +55,17 @@ fun DashboardScreen(
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            DrawerContent(usuario = usuario) { opcion ->
-                if (opcion == "SALIR") onCerrarSesion()
-                else pantallaActual = opcion
-            }
+            DrawerContent(
+                usuario = usuario,
+                onSeleccion = { opcion ->
+                    if (opcion == "SALIR") {
+                        onCerrarSesion()
+                    } else {
+                        pantallaActual = opcion
+                        scope.launch { drawerState.close() }
+                    }
+                }
+            )
         }
     ) {
         Scaffold(
@@ -69,9 +76,7 @@ fun DashboardScreen(
                     },
                     navigationIcon = {
                         IconButton(
-                            onClick = {
-                                scope.launch { drawerState.open() }
-                            }
+                            onClick = { scope.launch { drawerState.open() } }
                         ) {
                             Icon(Icons.Default.Menu, contentDescription = "Menú")
                         }
@@ -79,34 +84,45 @@ fun DashboardScreen(
                 )
             }
         ) { padding ->
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
             ) {
                 when (pantallaActual) {
-                    "TAREAS_USUARIO" -> TareasUsuarioScreen(
-                        onVerReportes = { tarea ->
-                            // navegar a ReportesScreen(tarea)
-                        }
-                    )
-                    "ASIGNAR" -> TareasDashboardScreen(
-                        onNuevaTarea = { /* TODO */ },
-                        onEditarTarea = { /* TODO */ },
-                        onVerReportes = { /* TODO */ }
-                    )
-                    "USUARIOS" -> UsuariosScreen()
-                    "REPORTES" -> ReportesScreen()
-                    else -> HomeScreen()
+                    "HOME" -> HomeScreen()
+
+                    "TAREAS_USUARIO" ->
+                        TareasUsuarioDashboardScreen()
+
+                    "ASIGNAR" ->
+                        TareasDashboardScreen(
+                            onNuevaTarea = {},
+                            onEditarTarea = {},
+                            onVerReportes = {}
+                        )
+
+                    "USUARIOS" ->
+                        UsuariosScreen()
+
+                    "NOMINAS" ->
+                        NominasDashboardScreen(usuario = usuario)
+
+                    "REPORTES" ->
+                        Text(
+                            "Reportes globales (pendiente)",
+                            modifier = Modifier.align(Alignment.Center)
+                        )
                 }
             }
         }
     }
 }
 
-// -----------------------------
+// --------------------------------------------------
 // Drawer lateral
-// -----------------------------
+// --------------------------------------------------
 @Composable
 fun DrawerContent(
     usuario: Usuario,
@@ -116,14 +132,16 @@ fun DrawerContent(
         modifier = Modifier
             .fillMaxHeight()
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
 
+        DrawerItem("Inicio") { onSeleccion("HOME") }
+
         if (!usuario.esAdmin()) {
-            DrawerItem("Tareas") { onSeleccion("TAREAS_USUARIO") }
+            DrawerItem("Mis tareas") { onSeleccion("TAREAS_USUARIO") }
         }
 
-        DrawerItem("Asignar") { onSeleccion("ASIGNAR") }
+        DrawerItem("Asignar tareas") { onSeleccion("ASIGNAR") }
 
         if (
             usuario.esAdmin() ||
@@ -131,6 +149,10 @@ fun DrawerContent(
             usuario.nombreDepartamento == "Recursos Humanos"
         ) {
             DrawerItem("Usuarios") { onSeleccion("USUARIOS") }
+        }
+
+        if (usuario.esAdmin()) {
+            DrawerItem("Nóminas") { onSeleccion("NOMINAS") }
         }
 
         if (usuario.esAdmin()) {
@@ -144,7 +166,10 @@ fun DrawerContent(
 }
 
 @Composable
-fun DrawerItem(texto: String, onClick: () -> Unit) {
+fun DrawerItem(
+    texto: String,
+    onClick: () -> Unit
+) {
     Button(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth()
@@ -153,9 +178,9 @@ fun DrawerItem(texto: String, onClick: () -> Unit) {
     }
 }
 
-// -----------------------------
-// Pantallas (placeholders por ahora)
-// -----------------------------
+// --------------------------------------------------
+// Pantallas base
+// --------------------------------------------------
 @Composable
 fun HomeScreen() {
     Box(
@@ -163,35 +188,5 @@ fun HomeScreen() {
         contentAlignment = Alignment.Center
     ) {
         Text("Bienvenido al sistema")
-    }
-}
-
-@Composable
-fun TareasUsuarioScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text("Tareas del usuario")
-    }
-}
-
-@Composable
-fun UsuariosScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text("Gestión de usuarios")
-    }
-}
-
-@Composable
-fun ReportesScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text("Reportes")
     }
 }
